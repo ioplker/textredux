@@ -242,8 +242,6 @@ function reduxbuffer:show()
 end
 
 function reduxbuffer:attach_to_command_entry()
-  local origin_buffer = buffer
-
   local target = ui.command_entry
   target._textredux = self
   target:set_lexer('text')
@@ -288,6 +286,14 @@ function reduxbuffer:update(callback)
   self:set_save_point()
 end
 
+-- Block the default attempt to restore the previous caret position
+-- when buffer contents are replaced. When the blocker is hit, it removes
+-- itself so that future, non-Textredux events can still trigger the default behavior.
+local function block_event()
+  events.disconnect(events.BUFFER_AFTER_REPLACE_TEXT, block_event)
+  return true
+end
+
 --[[-- Refreshes the buffer.
 A refresh works by ensuring that it's possible to write to the buffer and
 invoking the @{on_refresh} handler. After the refresh is complete, the
@@ -302,7 +308,10 @@ function reduxbuffer:refresh()
   self:update(function()
     self.hotspots = {}
     self:clear_all()
-    if self.on_refresh then self:on_refresh() end
+    if self.on_refresh then
+      events.connect(events.BUFFER_AFTER_REPLACE_TEXT, block_event, 1)
+      self:on_refresh()
+    end
   end)
 end
 
@@ -326,7 +335,7 @@ end
 -- @return true if the buffer is showing and false otherwise
 function reduxbuffer:is_showing()
   if not self.target then return false end
-  for i, view in ipairs(_VIEWS) do
+  for _, view in ipairs(_VIEWS) do
     if view.buffer == self.target then return true end
   end
   return false
@@ -558,7 +567,7 @@ local function _on_quit()
 end
 
 -- Mouse support.
-local function _on_indicator_release(position, modifiers)
+local function _on_indicator_release(position)
   local tr_buf = buffer._textredux
   if not tr_buf then return end
 

@@ -23,12 +23,23 @@ the two modes (by default, `Ctrl + S` is assigned for this).
 In traditional browsing mode, you can always select `..` to move up one
 directory level. But a quicker way of doing the same is to press `<backspace>`
 when you have an empty search. This also works when in snapopen mode.
+Additionally, `Alt + Up` will always go up one directory level
+even if the search is not empty.
+While the file selection dialog is active it is also possible to quickly select
+either the filesystem root or user home directory. To do so press `/` or `~`
+respectively.
 
 *Opening a sub directory in snapopen mode*
 
 In contrast with Textadept snapopen, you will in snapopen mode also see sub
 directories in the listing. This is by design - you can select a sub directory
 to snapopen that directory.
+
+*Opening a file forcefully*
+The open function can be used to create new files. However, sometimes
+this will not work because the query matches an existing item.
+In that case it is possible to force the creation of the file
+by using `Ctrl + Enter`.
 
 *Changing the styles used for different file types*
 
@@ -112,11 +123,6 @@ local function dirname(path)
   return dir
 end
 
-local function basename(path)
-  local parts = split_path(path)
-  return parts[#parts]
-end
-
 -- Normalizes the path. This will deconstruct and reconstruct the
 -- path's components, while removing any relative parent references
 local function normalize_path(path)
@@ -185,6 +191,25 @@ local function create_filter(filter)
     end
     return false
   end
+end
+
+-- create a filter for quick_open based on lfs.default_filter
+local function create_qopen_filter(filter)
+  filter['folders'] = filter['folders'] or {}
+  filter['extensions'] = filter['extensions'] or {}
+
+  for _, pattern in pairs(lfs.default_filter) do
+    pattern = pattern:match('..(.+)')
+    local pattern_type = ''
+    if pattern:match('%$$') then
+      pattern_type = 'folders'
+    else
+      pattern_type = 'extensions'
+    end
+    filter[pattern_type][#filter[pattern_type] + 1] = pattern
+  end
+
+  return filter
 end
 
 local function file(path, name, parent)
@@ -285,7 +310,7 @@ local function open_selected_file(path, exists, list)
     {
       title = 'Create new file',
       text = path .. "\ndoes not exist, do you want to create it?",
-      icon = 'gtk-dialog-question',
+      icon = 'dialog-question',
       button1 = 'Cancel',
       button2 = 'Create file'
     }
@@ -340,6 +365,7 @@ local function toggle_snap(list)
     filter.folders = filter.folders or {}
     filter.folders[#filter.folders + 1] = updir_pattern
   end
+  filter = create_qopen_filter(filter)
   data.prev_depth = depth
   chdir(list, data.directory)
   list:set_current_search(search)
@@ -358,14 +384,18 @@ local function get_windows_drives()
   return drives
 end
 
+local function display_windows_root(list)
+  list.items = get_windows_drives()
+  list.data.directory = ""
+  list.data.depth = 1
+  list.title = "Drives"
+  list:show()
+end
+
 local function updir(list)
   local parent = dirname(list.data.directory)
     if WIN32 and #list.data.directory == 3 then
-      list.items = get_windows_drives()
-      list.data.directory = ""
-      list.data.depth = 1
-      list.title = "Drives"
-      list:show()
+      display_windows_root(list)
       return true
     elseif parent ~= list.data.directory then
       chdir(list, parent)
@@ -378,6 +408,13 @@ local function create_list(directory, filter, depth, max_files)
   local data = list.data
   list.column_styles = {get_file_style}
   list.keys["ctrl+s"] = toggle_snap
+  list.keys['/'] = function()
+    if WIN32 then
+      display_windows_root(list)
+    else
+      chdir(list, '/')
+    end
+  end
   list.keys['~'] = function()
     if user_home then chdir(list, user_home) end
   end
@@ -402,7 +439,7 @@ local function create_list(directory, filter, depth, max_files)
       end
     end
   end
-  list.keys["ctrl+\n"] = function ()
+  list.keys["right"] = function()
     local search = list:get_current_search()
     if not search then return end
     local found = false
@@ -572,6 +609,7 @@ end
 function M.open_file(start_directory)
   local filter = { folders = { separator .. '%.$' } }
   M.select_file(open_selected_file, start_directory, filter, 1, io.quick_open_max)
+  ui.statusbar_text = '[/] = jump to filesystem root, [~] = jump to userhome'
 end
 
 
@@ -609,19 +647,7 @@ function M.snapopen(directory, filter, exclude_FILTER, depth)
   filter.folders[#filter.folders + 1] = updir_pattern
 
   if not exclude_FILTER then
-    filter['folders'] = filter['folders'] or {}
-    filter['extensions'] = filter['extensions'] or {}
-
-    for _, pattern in ipairs(lfs.default_filter) do
-      pattern = pattern:match('..(.+)')
-      local pattern_type = ''
-      if pattern:match('%$$') then
-        pattern_type = 'folders'
-      else
-        pattern_type = 'extensions'
-      end
-      filter[pattern_type][#filter[pattern_type] + 1] = pattern
-    end
+    filter = create_qopen_filter(filter)
   end
 
   M.select_file(open_selected_file, directory, filter, depth, io.quick_open_max)

@@ -17,7 +17,7 @@ in your `~/.textadept/init.lua`:
 ## Features
 
 - Close a buffer from the buffer list (bound to `Ctrl + D` by default)
-- Close all files in the directory of the selected buffer
+- Close all files currently shown in the buffer list.
   (bound to `Ctrl + Shift + D` and `Meta + D` in Curses by default)
 - The list of buffers is sorted and the current buffer is pre-selected
 - The buffers to show can be specified using a function
@@ -149,7 +149,7 @@ function M.close_selected(list)
   local current_search = list:get_current_search()
   if not current_search then return end
   while true do
-    local sel_buffer, name = M.currently_selected_buffer(list)
+    local sel_buffer, _ = M.currently_selected_buffer(list)
     if not sel_buffer then break end
     local current_pos = buffer.current_pos
     view:goto_buffer(sel_buffer)
